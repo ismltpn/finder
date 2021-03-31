@@ -22,7 +22,6 @@ Bool check_file(struct stat *filestat, char *name, FlagHolder flags, char *filen
 
 Bool check_file(struct stat *filestat, char *name, FlagHolder flags, char *filename, size_t filesize, FileType filetype,
                 PermissionFlagHolder permissions, size_t numoflinks, char *path) {
-    /*printf("Checking file: %s\n", name);*/
     Bool result = TRUE;
     char lowername[256];
     if ((flags & FILENAME_FLAG) != 0) {
@@ -158,7 +157,6 @@ void find(FlagHolder flags, char *filename, size_t filesize, FileType filetype, 
     Bool file_found = FALSE;
     dir = opendir(path);
     if (dir == NULL) {
-        printf("PERROR\n");
         perror(path);
         free_file_tree(tree);
         shutdown(USER_ERROR_EXIT);
