@@ -7,86 +7,83 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/stat.h>
-#include <sys/types.h>
 #include <dirent.h>
 
 int get_permission_flag_from_st_mode(__mode_t mod);
-Bool build_file_tree(FileTree *root, FileTree *parent, char filepath[4096], char name[256], FlagHolder flags, char *filename, size_t filesize, FileType filetype, PermissionFlagHolder permissions, size_t numoflinks, char *path);
-Bool check_file(struct stat *filestat, char *name, FlagHolder flags, char *filename, size_t filesize, FileType filetype, PermissionFlagHolder permissions, size_t numoflinks, char *path);
+Bool is_link(struct stat *filestat);
+Bool ends_with(const char *str, char c);
 
-Bool check_file(struct stat *filestat, char *name, FlagHolder flags, char *filename, size_t filesize, FileType filetype, PermissionFlagHolder permissions, size_t numoflinks, char *path)
-{
-    printf("Checking file: %s\n", name);
+Bool
+build_file_tree(FileTree *root, FileTree *parent, char filepath[4096], char name[256], FlagHolder flags, char *filename,
+                size_t filesize, FileType filetype, PermissionFlagHolder permissions, size_t numoflinks, char *path);
+
+Bool check_file(struct stat *filestat, char *name, FlagHolder flags, char *filename, size_t filesize, FileType filetype,
+                PermissionFlagHolder permissions, size_t numoflinks, char *path);
+
+Bool check_file(struct stat *filestat, char *name, FlagHolder flags, char *filename, size_t filesize, FileType filetype,
+                PermissionFlagHolder permissions, size_t numoflinks, char *path) {
+    /*printf("Checking file: %s\n", name);*/
     Bool result = TRUE;
     char lowername[256];
-    if (flags & FILENAME_FLAG != 0)
-    {
+    if ((flags & FILENAME_FLAG) != 0) {
         str_to_lower(name, lowername);
-        result = str_equal(lowername, filename);
-        if (!result)
-        {
+        result = match(filename, lowername);
+        if (!result) {
             return FALSE;
         }
     }
-    if (flags & FILESIZE_FLAG != 0)
-    {
+    if ((flags & FILESIZE_FLAG) != 0) {
         result = filesize == filestat->st_size;
-        if (!result)
-        {
+        if (!result) {
             return FALSE;
         }
     }
-    if (flags & FILETYPE_FLAG != 0)
-    {
-        switch (filetype)
-        {
-        case F_DIRECTORY:
-            result = filestat->st_mode & S_IFDIR;
-            break;
-        case F_SOCKET:
-            result = filestat->st_mode & S_IFSOCK;
-            break;
-        case F_B_DEVICE:
-            result = filestat->st_mode & S_IFBLK;
-            break;
-        case F_C_DEVICE:
-            result = filestat->st_mode & S_IFCHR;
-            break;
-        case F_FILE:
-            result = filestat->st_mode & S_IFREG;
-            break;
-        case F_PIPE:
-            result = filestat->st_mode & S_IFIFO;
-            break;
-        case F_LINK:
-            result = filestat->st_mode & S_IFLNK;
-            break;
-        default:
-            result = FALSE;
-            break;
+    if ((flags & FILETYPE_FLAG) != 0) {
+        switch (filetype) {
+            case F_DIRECTORY:
+                result = S_ISDIR(filestat->st_mode);
+                break;
+            case F_SOCKET:
+                result = S_ISSOCK(filestat->st_mode);
+                break;
+            case F_B_DEVICE:
+                result = S_ISBLK(filestat->st_mode);
+                break;
+            case F_C_DEVICE:
+                result = S_ISCHR(filestat->st_mode);
+                break;
+            case F_FILE:
+                result = S_ISREG(filestat->st_mode);
+                break;
+            case F_PIPE:
+                result = S_ISFIFO(filestat->st_mode);
+                break;
+            case F_LINK:
+                result = S_ISLNK(filestat->st_mode);
+                break;
+            default:
+                result = FALSE;
+                break;
         }
-        if (!result)
-        {
+        if (!result) {
             return FALSE;
         }
     }
-    if (flags & PERMISSIONS_FLAG != 0)
-    {
+    if ((flags & PERMISSIONS_FLAG) != 0) {
         result = get_permission_flag_from_st_mode(filestat->st_mode) == permissions;
-        if (!result)
-        {
+        if (!result) {
             return FALSE;
         }
     }
-    if (flags & NUMOFLINKS_FLAG != 0)
-    {
+    if ((flags & NUMOFLINKS_FLAG) != 0) {
         result = filestat->st_nlink == numoflinks;
     }
     return result;
 }
 
-Bool build_file_tree(FileTree *root, FileTree *parent, char filepath[4096], char name[256], FlagHolder flags, char *filename, size_t filesize, FileType filetype, PermissionFlagHolder permissions, size_t numoflinks, char *path)
-{
+Bool
+build_file_tree(FileTree *root, FileTree *parent, char filepath[4096], char name[256], FlagHolder flags, char *filename,
+                size_t filesize, FileType filetype, PermissionFlagHolder permissions, size_t numoflinks, char *path) {
     DIR *dir = opendir(filepath);
     struct dirent *dir_data;
     Bool is_dir = TRUE;
@@ -94,143 +91,128 @@ Bool build_file_tree(FileTree *root, FileTree *parent, char filepath[4096], char
     Bool file_found = FALSE;
     Bool inner_file_found = FALSE;
     FileTree *child;
-    printf("build tree file: %s\n", filepath);
-    if (dir == NULL)
-    {
-        if (errno == ENOTDIR)
-        {
+    char new_path[4096];
+    lstat(filepath, &filestat);
+    file_found = check_file(&filestat, name, flags, filename, filesize, filetype, permissions, numoflinks, path);
+    if (dir == NULL) {
+        if (errno == ENOTDIR || is_link(&filestat)) {
             is_dir = FALSE;
-        }
-        else
-        {
-            perror(path);
+        } else {
+            perror(filepath);
+            free_file_tree(root);
             shutdown(USER_ERROR_EXIT);
         }
     }
-    stat(filepath, &filestat);
-    file_found = check_file(&filestat, name, flags, filename, filesize, filetype, permissions, numoflinks, path);
-    if (is_dir)
-    {
-        do
-        {
+    if (is_dir) {
+        do {
             errno = 0;
             dir_data = readdir(dir);
-            if (dir_data != NULL)
-            {
+            if (dir_data != NULL) {
 
-                if (parent == NULL)
-                {
-                    child = root;
-                }
-                else
-                {
-                    child = peek_child(parent);
-                }
-                push_child(child, name);
-                pretty_print_tree(root);
-                str_cat(filepath, "/", filepath);
-                str_cat(filepath, dir_data->d_name, filepath);
-                inner_file_found = build_file_tree(root, child, filepath, dir_data->d_name, flags, filename, filesize, filetype, permissions, numoflinks, path);
-                if (inner_file_found)
-                {
-                    file_found = TRUE;
-                }
-                else
-                {
-                    if (parent != NULL)
-                    {
-                        pop_child(parent);
+                if (!str_equal(dir_data->d_name, ".") && !str_equal(dir_data->d_name, "..")) {
+                    if (parent == NULL) {
+                        child = root;
+                    } else {
+                        child = peek_child(parent);
                     }
-                    else
-                    {
-                        return FALSE;
+                    push_child(child, dir_data->d_name);
+                    if(!ends_with(filepath, '/')){
+                        str_cat(filepath, "/", new_path);
+                        str_cat(new_path, dir_data->d_name, new_path);
+                    }else{
+                        str_cat(filepath, dir_data->d_name, new_path);
+                    }
+                    inner_file_found = build_file_tree(root, child, new_path, dir_data->d_name, flags, filename,
+                                                       filesize, filetype, permissions, numoflinks, path);
+                    if (inner_file_found) {
+                        file_found = TRUE;
+                    } else {
+                        if (parent != NULL) {
+                            pop_child(child);
+                        } else {
+                            pop_child(root);
+                        }
                     }
                 }
-            }
-            else
-            {
-                if (errno)
-                {
+            } else {
+                if (errno) {
                     closedir(dir);
-                    perror(path);
+                    perror(filepath);
+                    free_file_tree(root);
                     shutdown(SYSTEM_ERROR_EXIT);
                 }
             }
         } while (dir_data != NULL);
+        closedir(dir);
     }
     return file_found;
 }
 
-void find(FlagHolder flags, char *filename, size_t filesize, FileType filetype, PermissionFlagHolder permissions, size_t numoflinks, char *path)
-{
+void find(FlagHolder flags, char *filename, size_t filesize, FileType filetype, PermissionFlagHolder permissions,
+          size_t numoflinks, char *path) {
     FileTree *tree = create_file_tree(path);
     struct dirent *dir_data;
     DIR *dir = NULL;
     char cur_path[4096];
     char name[256];
     Bool file_found = FALSE;
-    printf("FIND path: -%s-\n", path);
     dir = opendir(path);
-    if (dir == NULL)
-    {
+    if (dir == NULL) {
         printf("PERROR\n");
         perror(path);
+        free_file_tree(tree);
         shutdown(USER_ERROR_EXIT);
     }
     closedir(dir);
     str_copy(path, cur_path);
     str_copy(path, name);
-    printf("before build\n");
-    file_found = build_file_tree(tree, NULL, cur_path, name, flags, filename, filesize, filetype, permissions, numoflinks, path);
-    if (file_found)
-    {
+    file_found = build_file_tree(tree, NULL, cur_path, name, flags, filename, filesize, filetype, permissions,
+                                 numoflinks, path);
+    if (file_found) {
         pretty_print_tree(tree);
-    }
-    else
-    {
+    } else {
         safe_write(STDOUT_FILENO, "No file found\n", 15);
     }
     free_file_tree(tree);
 }
 
-PermissionFlagHolder get_permission_flag_from_st_mode(__mode_t mod)
-{
+PermissionFlagHolder get_permission_flag_from_st_mode(__mode_t mod) {
     PermissionFlagHolder flag = 0;
-    if (mod & S_IRUSR)
-    {
+    if (mod & S_IRUSR) {
         flag += 256; /* 100000000 */
     }
-    if (mod & S_IWUSR)
-    {
+    if (mod & S_IWUSR) {
         flag += 128; /* 010000000 */
     }
-    if (mod & S_IXUSR)
-    {
+    if (mod & S_IXUSR) {
         flag += 64; /* 001000000 */
     }
-    if (mod & S_IRGRP)
-    {
+    if (mod & S_IRGRP) {
         flag += 32; /* 000100000 */
     }
-    if (mod & S_IWGRP)
-    {
+    if (mod & S_IWGRP) {
         flag += 16; /* 000010000 */
     }
-    if (mod & S_IXGRP)
-    {
+    if (mod & S_IXGRP) {
         flag += 8; /* 000001000 */
     }
-    if (mod & S_IROTH)
-    {
+    if (mod & S_IROTH) {
         flag += 4; /* 000000100 */
     }
-    if (mod & S_IWOTH)
-    {
+    if (mod & S_IWOTH) {
         flag += 2; /* 000000010 */
     }
-    if (mod & S_IXOTH)
-    {
+    if (mod & S_IXOTH) {
         flag += 1; /* 000000001 */
     }
     return flag;
+}
+Bool ends_with(const char *str, char c){
+    int i;
+    for(i=0; str[i]!='\0'; ++i);
+    return str[i-1] == c;
+}
+
+Bool is_link(struct stat *filestat){
+    return S_ISLNK(filestat->st_mode);
 }

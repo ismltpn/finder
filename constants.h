@@ -1,9 +1,8 @@
-#ifndef _CONSTANTS_H
-#define _CONSTANTS_H
+#ifndef CONSTANTS_H
+#define CONSTANTS_H
 
 /* File Type */
-typedef enum file_type
-{
+typedef enum file_type {
     F_UNKNOWN = 0,
     F_DIRECTORY = 1,
     F_SOCKET = 2,
@@ -15,8 +14,7 @@ typedef enum file_type
 } FileType;
 
 /* Bool */
-typedef enum bool
-{
+typedef enum bool {
     FALSE = 0,
     TRUE = 1
 } Bool;
@@ -49,6 +47,6 @@ typedef int PermissionFlagHolder;
 
 /* Strings */
 #define S_WRONG_USAGE_ERR "Usage: "
-#define S_ARGUMENT_EXAMPLES " -w path (required)\n -f filename.ext -b 809632 -t f -p rwxr-xr-- -l 2 -w .\n -f filename\n -b filesize\n -t filetype\n -p permissions\n"
+#define S_ARGUMENT_EXAMPLES " -f filename.ext -b 809632 -t f -p rwxr-xr-- -l 2 -w .\n -w path (required)\n -f filename\n -b filesize\n -t filetype (d s b c f p or l)\n -p permissions\n -l number of links\n"
 
 #endif
